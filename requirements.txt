@@ -1,0 +1,7 @@
+torch==2.5.1
+transformers>=4.45
+accelerate>=0.30
+soundfile>=0.12
+numpy
+pytest
+git+https://github.com/Aratako/MioCodec

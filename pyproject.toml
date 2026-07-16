@@ -1,0 +1,19 @@
+[project]
+name = "miotts"
+version = "0.1.0"
+description = "Inference wrapper for SPRINGLab/Indic-Mio TTS"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.2",
+    "transformers>=4.45",
+    "accelerate>=0.30",
+    "soundfile>=0.12",
+    "numpy",
+    "miocodec @ git+https://github.com/Aratako/MioCodec",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
