@@ -1,0 +1,33 @@
+# Requirements for the vLLM-hosted Indic-Mio server (.venv_vllm), Python 3.10.
+#
+# These versions are pinned deliberately -- see commands.md's "Faster inference
+# with vLLM" section for why. Summary of the constraints that led here:
+#   - Driver on this box is 550.127 (CUDA 12.4 max). vllm's latest release pulls
+#     a torch build requiring newer CUDA, so it never starts.
+#   - vllm==0.8.5 pulls torch==2.6.0, whose default PyPI wheel is cu124 --
+#     compatible with this driver.
+#   - vllm==0.8.5's tokenizer wrapper calls an attribute
+#     (all_special_tokens_extended) that newer transformers removed; pin
+#     transformers==4.51.3, which is also the minimum Qwen3 itself requires.
+#   - flashinfer (an optional vllm accelerator) ships a prebuilt .so with an
+#     ABI mismatch in this environment and crashes on import; DO NOT install
+#     flashinfer/flashinfer-python here -- vllm falls back to its native
+#     sampler fine without it.
+#
+# Do not casually bump these versions without re-verifying the whole chain
+# (torch CUDA build -> driver -> transformers -> vllm) actually starts.
+
+vllm==0.8.5
+transformers==4.51.3
+
+# Needed to run miotts.benchmark's --backend vllm client (HTTP calls +
+# response parsing) from within this same venv. NOT needed for the vllm
+# server process itself -- only for the benchmark/CLI client code path.
+requests>=2.31
+
+# NOTE: miocodec (the audio codec used to decode speech tokens to a waveform)
+# requires Python >=3.12 and CANNOT be installed here (this venv is 3.10,
+# required for vllm==0.8.5's wheel/dependency chain above). This means the
+# benchmark/CLI client's audio-decode step must run from the regular project
+# .venv (3.12, see requirements.txt), not from here. See run.sh and
+# commands.md for the two-venv workflow this implies.

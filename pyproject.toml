@@ -9,11 +9,16 @@ dependencies = [
     "accelerate>=0.30",
     "soundfile>=0.12",
     "numpy",
+    "requests>=2.31",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "websockets>=12.0",
     "miocodec @ git+https://github.com/Aratako/MioCodec",
 ]
 
 [project.optional-dependencies]
 test = ["pytest"]
+train = ["peft>=0.11"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

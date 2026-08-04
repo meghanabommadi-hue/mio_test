@@ -1,11 +1,9 @@
-from pathlib import Path
-
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from .config import MioConfig
-
-PRESETS_DIR = Path(__file__).parent / "presets"
+from .postprocess import smooth_glitches
+from .voice import VoiceResolver, extract_speech_tokens
 
 
 class IndicMioSynthesizer:
@@ -15,57 +13,31 @@ class IndicMioSynthesizer:
         self.config = config or MioConfig()
         self._tokenizer = None
         self._model = None
-        self._codec = None
-        self._preset_cache: dict[str, torch.Tensor] = {}
+        self._voice = VoiceResolver(self.config)
 
     def load(self):
         cfg = self.config
-        self._tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, trust_remote_code=True)
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            cfg.model_name, subfolder=cfg.model_subfolder or "", trust_remote_code=True
+        )
         self._model = AutoModelForCausalLM.from_pretrained(
             cfg.model_name,
+            subfolder=cfg.model_subfolder or "",
             torch_dtype=torch.bfloat16,
             device_map=cfg.device,
         )
-
-        from miocodec import MioCodecModel
-
-        self._codec = MioCodecModel.from_pretrained(cfg.codec_name).eval().to(cfg.device)
+        self._voice.load_codec()
         return self
 
     @property
     def is_loaded(self) -> bool:
-        return self._model is not None and self._codec is not None
-
-    def _codec_device(self) -> torch.device:
-        return next(self._codec.parameters()).device
+        return self._model is not None and self._voice._codec is not None
 
     def load_preset_embedding(self, preset_id: str) -> torch.Tensor:
-        if preset_id in self._preset_cache:
-            return self._preset_cache[preset_id]
-        path = PRESETS_DIR / f"{preset_id}.pt"
-        if not path.exists():
-            raise FileNotFoundError(f"Voice preset '{preset_id}' not found at {path}")
-        embedding = torch.load(path, map_location="cpu", weights_only=True)
-        embedding = embedding.squeeze().to(self._codec_device())
-        self._preset_cache[preset_id] = embedding
-        return embedding
+        return self._voice.load_preset_embedding(preset_id)
 
     def embedding_from_reference_audio(self, audio_path: str) -> torch.Tensor:
-        from miocodec.util import load_audio
-
-        waveform = load_audio(audio_path, sample_rate=self._codec.config.sample_rate)
-        waveform = waveform.to(self._codec_device())
-        with torch.no_grad():
-            features = self._codec.encode(waveform, return_content=False, return_global=True)
-        return features.global_embedding
-
-    def _extract_speech_tokens(self, generated_ids: torch.Tensor) -> list[int]:
-        cfg = self.config
-        codes = []
-        for token_id in generated_ids.tolist():
-            if cfg.speech_token_offset <= token_id < cfg.speech_token_offset + cfg.speech_vocab_size:
-                codes.append(token_id - cfg.speech_token_offset)
-        return codes
+        return self._voice.embedding_from_reference_audio(audio_path)
 
     def synthesize(
         self,
@@ -73,12 +45,18 @@ class IndicMioSynthesizer:
         voice_preset: str | None = None,
         reference_audio: str | None = None,
         global_embedding: torch.Tensor | None = None,
+        smooth: bool | None = None,
     ) -> torch.Tensor:
         """Generate speech audio for `text`. Returns a 1-D float waveform tensor at cfg.sample_rate.
 
         Voice is selected via one of (in priority order): `global_embedding` (precomputed),
-        `reference_audio` (wav path to clone), `voice_preset` (bundled preset id), or
+        `reference_audio` (wav path to clone), `voice_preset` (bundled preset id),
+        `config.default_reference_audio` (hardcoded reference clip), or
         `config.default_preset` if none given.
+
+        `smooth` (default `config.smooth_glitches`) crossfades over isolated codec
+        glitches after decode -- see postprocess.py. Adds ~0.6ms per second of
+        audio; pass `smooth=False` to disable per-call.
         """
         if not self.is_loaded:
             self.load()
@@ -96,33 +74,22 @@ class IndicMioSynthesizer:
                 max_new_tokens=cfg.max_new_tokens,
                 temperature=cfg.temperature,
                 top_p=cfg.top_p,
+                repetition_penalty=cfg.repetition_penalty,
                 do_sample=True,
             )
 
         generated = output[0][inputs["input_ids"].shape[1]:]
-        audio_codes = self._extract_speech_tokens(generated)
+        audio_codes = extract_speech_tokens(generated.tolist(), cfg)
         if not audio_codes:
             raise RuntimeError(
                 "No speech tokens were generated for the given text; try again or "
                 "increase max_new_tokens."
             )
 
-        if global_embedding is None:
-            if reference_audio is not None:
-                global_embedding = self.embedding_from_reference_audio(reference_audio)
-            else:
-                global_embedding = self.load_preset_embedding(voice_preset or cfg.default_preset)
+        global_embedding = self._voice.resolve(voice_preset, reference_audio, global_embedding)
+        waveform = self._voice.decode(audio_codes, global_embedding)
 
-        global_embedding = global_embedding.squeeze()
-
-        content_token_indices = torch.tensor(
-            audio_codes, dtype=torch.long, device=self._codec_device()
-        )
-
-        with torch.no_grad():
-            waveform = self._codec.decode(
-                global_embedding=global_embedding,
-                content_token_indices=content_token_indices,
-            )
-
-        return waveform.squeeze().float().cpu()
+        do_smooth = cfg.smooth_glitches if smooth is None else smooth
+        if do_smooth:
+            waveform = torch.from_numpy(smooth_glitches(waveform.numpy(), cfg.sample_rate))
+        return waveform

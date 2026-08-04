@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>miotts &mdash; Text to Speech</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f5f7;
+    --card: #ffffff;
+    --text: #1d1d1f;
+    --muted: #6e6e73;
+    --accent: #6d28d9;
+    --accent-hover: #5b21b6;
+    --border: #e0e0e5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f0f12;
+      --card: #1a1a1f;
+      --text: #f2f2f5;
+      --muted: #9a9aa2;
+      --accent: #8b5cf6;
+      --accent-hover: #a78bfa;
+      --border: #2b2b33;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 560px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06);
+  }
+  h1 {
+    font-size: 1.4rem;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0 0 24px;
+  }
+  label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--muted);
+  }
+  textarea {
+    flex: 1;
+    min-width: 0;
+    min-height: 54px;
+    resize: vertical;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-size: 1rem;
+    font-family: inherit;
+  }
+  .input-row {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .input-row button {
+    width: auto;
+    flex-shrink: 0;
+    padding: 0 22px;
+  }
+  textarea:focus, select:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  select {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    font-size: 0.95rem;
+    margin-bottom: 22px;
+  }
+  button {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  button:hover:not(:disabled) { background: var(--accent-hover); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .status {
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    min-height: 20px;
+  }
+  .status.error { color: #dc2626; }
+  audio {
+    width: 100%;
+    margin-top: 16px;
+    display: none;
+  }
+  .row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 22px;
+  }
+  .row > div { flex: 1; }
+  .suggestions {
+    margin-bottom: 18px;
+  }
+  .chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chip {
+    max-width: 100%;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-size: 0.8rem;
+    line-height: 1.3;
+    cursor: pointer;
+    text-align: left;
+    white-space: normal;
+  }
+  .chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>miotts</h1>
+    <p class="subtitle">Type text, pick a voice, hit Speak.</p>
+
+    <label for="text">Text</label>
+    <div class="input-row">
+      <textarea id="text" placeholder="Hello, how are you today?">Hello, how are you today?</textarea>
+      <button id="speak">Speak</button>
+    </div>
+
+    <div class="suggestions">
+      <label>Suggested (Hindi + English mixed)</label>
+      <div class="chip-group" id="chips-hindi"></div>
+    </div>
+
+    <div class="suggestions">
+      <label>Suggested (Telugu + English mixed)</label>
+      <div class="chip-group" id="chips-telugu"></div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="voice">Voice preset</label>
+        <select id="voice">
+          <option value="">Default</option>
+          <option value="en_female">en_female</option>
+          <option value="en_male">en_male</option>
+          <option value="jp_female">jp_female</option>
+          <option value="jp_male">jp_male</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="status" class="status"></div>
+    <audio id="player" controls></audio>
+  </div>
+
+<script>
+  const textEl = document.getElementById('text');
+  const voiceEl = document.getElementById('voice');
+  const btn = document.getElementById('speak');
+  const statusEl = document.getElementById('status');
+  const player = document.getElementById('player');
+
+  const SUGGESTIONS = {
+    hindi: [
+      "Hello Rahul, aapki E M I का भुगतान इस महीने की पांच तारीख से बकाया है, यह एक reminder call है।",
+      "Hi Priya, हमें इस महीने आपकी loan installment प्राप्त नहीं हुई। कृपया जल्द से जल्द बकाया राशि जमा करें।",
+      "Namaste Sanjay, आपका account अब तीस दिनों से अधिक समय से overdue है। कृपया आज ही payment करें।",
+      "Hello Anita, क्या हम आपकी pending E M I के लिए एक नई payment plan बनाने में मदद कर सकते हैं?",
+      "Hi Vikram, यह आपके outstanding balance के संबंध में final notice है। कृपया अड़तालीस घंटों के भीतर हमसे संपर्क करें।",
+    ],
+    telugu: [
+      "Hello Abhishek, మీ E M I చెల్లింపు ఈ నెల ఐదవ తేదీ నుండి బాకీ ఉందని ఇది ఒక reminder call.",
+      "Hi Lakshmi, ఈ నెల మీ loan installment మాకు అందలేదు. దయచేసి వీలైనంత త్వరగా బాకీ మొత్తాన్ని చెల్లించండి.",
+      "Namaste Sudheer, మీ account ఇప్పుడు ముప్పై రోజులు దాటి overdueగా ఉంది. దయచేసి ఈరోజే payment చేయండి.",
+      "Hello Divya, మీ pending E M I కోసం కొత్త payment plan ఏర్పాటు చేయడంలో మేము సహాయం చేయవచ్చా?",
+      "Hi Prasad, మీ outstanding balance కి సంబంధించి ఇది చివరి notice. దయచేసి నలభై ఎనిమిది గంటల్లో మా office ని సంప్రదించండి.",
+    ],
+  };
+
+  function renderChips(containerId, sentences) {
+    const container = document.getElementById(containerId);
+    sentences.forEach((sentence) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip';
+      chip.textContent = sentence.length > 70 ? sentence.slice(0, 67) + '…' : sentence;
+      chip.title = sentence;
+      chip.addEventListener('click', () => {
+        textEl.value = sentence;
+        textEl.focus();
+      });
+      container.appendChild(chip);
+    });
+  }
+
+  renderChips('chips-hindi', SUGGESTIONS.hindi);
+  renderChips('chips-telugu', SUGGESTIONS.telugu);
+
+  btn.addEventListener('click', async () => {
+    const text = textEl.value.trim();
+    if (!text) {
+      statusEl.textContent = 'Please enter some text.';
+      statusEl.classList.add('error');
+      return;
+    }
+
+    btn.disabled = true;
+    statusEl.classList.remove('error');
+    statusEl.textContent = 'Synthesizing...';
+    player.style.display = 'none';
+
+    const body = { text };
+    if (voiceEl.value) body.voice_preset = voiceEl.value;
+
+    try {
+      const t0 = performance.now();
+      const res = await fetch('/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      player.src = url;
+      player.style.display = 'block';
+      player.play();
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+      statusEl.textContent = `Done in ${elapsed}s.`;
+    } catch (e) {
+      statusEl.textContent = `Error: ${e.message}`;
+      statusEl.classList.add('error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

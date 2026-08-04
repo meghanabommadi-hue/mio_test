@@ -8,12 +8,13 @@ def format_report(results: list[dict]) -> str:
     lines.append("=" * 70)
     lines.append("")
 
-    by_language: dict[str, list[dict]] = {}
+    by_group: dict[tuple[str, str], list[dict]] = {}
     for r in results:
-        by_language.setdefault(r["language"], []).append(r)
+        key = (r.get("category", "generic"), r["language"])
+        by_group.setdefault(key, []).append(r)
 
-    for language, rows in by_language.items():
-        lines.append(f"Language: {language}")
+    for (category, language), rows in by_group.items():
+        lines.append(f"Category: {category} | Language: {language}")
         lines.append("-" * 70)
         header = (
             f"{'batch':>6} {'ok':>6} {'fail':>5} {'wall_s':>9} {'audio_s':>9} "
