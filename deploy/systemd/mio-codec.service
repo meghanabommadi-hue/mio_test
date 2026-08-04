@@ -1,0 +1,16 @@
+[Unit]
+Description=Indic-Mio MioCodec server (speech tokens -> waveform)
+After=network.target
+
+[Service]
+Type=simple
+User=jovyan
+WorkingDirectory=/home/jovyan/miotts
+Environment=CODEC_PORT=8001
+EnvironmentFile=-/home/jovyan/miotts/.env
+ExecStart=/home/jovyan/miotts/.venv/bin/python3 -m miotts.codec_server --port ${CODEC_PORT}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

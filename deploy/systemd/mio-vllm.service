@@ -1,0 +1,26 @@
+[Unit]
+Description=Indic-Mio vLLM inference server
+After=network.target
+
+[Service]
+Type=simple
+User=jovyan
+WorkingDirectory=/home/jovyan/miotts
+Environment=MAX_MODEL_LEN=2560
+Environment=GPU_MEM_UTIL=0.6
+Environment=PORT=8000
+Environment=HF_HUB_OFFLINE=1
+Environment=TRANSFORMERS_OFFLINE=1
+# Overrides any of the above; see /home/jovyan/miotts/.env.example.
+EnvironmentFile=-/home/jovyan/miotts/.env
+ExecStart=/home/jovyan/miotts/.venv_vllm/bin/vllm serve SPRINGLab/Indic-Mio --max-model-len ${MAX_MODEL_LEN} --gpu-memory-utilization ${GPU_MEM_UTIL} --port ${PORT}
+Restart=on-failure
+RestartSec=5
+# vllm serve pulls in a multiprocessing engine-core worker that outlives a
+# plain SIGTERM to the parent and keeps holding GPU memory -- kill the whole
+# cgroup on stop/restart (see HOSTING.md's Troubleshooting section).
+KillMode=control-group
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

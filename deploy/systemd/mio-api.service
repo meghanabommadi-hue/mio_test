@@ -1,0 +1,16 @@
+[Unit]
+Description=Indic-Mio simple HTTP TTS API (in-process transformers backend, no vLLM)
+After=network.target
+
+[Service]
+Type=simple
+User=jovyan
+WorkingDirectory=/home/jovyan/miotts
+Environment=API_PORT=8080
+EnvironmentFile=-/home/jovyan/miotts/.env
+ExecStart=/home/jovyan/miotts/.venv/bin/python3 -m miotts.api_server --port ${API_PORT}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

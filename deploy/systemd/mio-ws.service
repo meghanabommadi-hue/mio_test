@@ -1,0 +1,19 @@
+[Unit]
+Description=Indic-Mio low-latency WebSocket TTS server
+After=network.target mio-vllm.service mio-codec.service
+Requires=mio-vllm.service mio-codec.service
+
+[Service]
+Type=simple
+User=jovyan
+WorkingDirectory=/home/jovyan/miotts
+Environment=WS_PORT=8765
+Environment=PORT=8000
+Environment=CODEC_PORT=8001
+EnvironmentFile=-/home/jovyan/miotts/.env
+ExecStart=/home/jovyan/miotts/.venv/bin/python3 -m miotts.ws_server --port ${WS_PORT} --vllm-base-url http://localhost:${PORT} --codec-base-url http://localhost:${CODEC_PORT}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
